@@ -573,10 +573,8 @@ def compute_overall_qhat(scores,
         qhat = np.zeros(num_classes)
         for k in range(num_classes):
             qhat[k] = compute_overall_qhat(scores[targets == k],
-                                           targets[targets == k],
-                                           alpha,
-                                           method=method,
-                                           class_specific=False)
+                                           targets[targets == k], method,
+                                           penalities[targets == k], alpha)
     return qhat
 
 
