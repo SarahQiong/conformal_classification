@@ -107,7 +107,7 @@ def all_validate(val_loader, model):
                 logits.append(score)
                 targets.append(target)
 
-        logits = np.stack(logits)
+        logits = np.vstack(logits)
         targets = np.concatenate(targets)
 
         # measure accuracy and record loss
@@ -149,6 +149,10 @@ def detailed_coverage_size(sets, targets):
 
 def accuracy(output, target, topk=(1, )):
     """Computes the precision@k for the specified values of k"""
+    if isinstance(output, np.ndarray):
+        output = torch.from_numpy(output)
+        target = torch.from_numpy(target)
+
     maxk = max(topk)
     batch_size = target.size(0)
 
