@@ -539,7 +539,7 @@ def compute_overall_qhat(scores,
                          class_specific=False):
     n = scores.shape[0]
     classes = np.unique(targets)
-    num_classes = classes.shape[0]
+    num_classes = len(classes)
 
     if not class_specific:
         if method == "optimal":
