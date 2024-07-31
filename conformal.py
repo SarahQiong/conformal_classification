@@ -525,7 +525,7 @@ def conformal_test(scores,
                                penalties=penalties,
                                class_specific=False,
                                randomized=None,
-                               allow_zero_sets=None))
+                               allow_zero_sets=allow_zero_sets))
         prediction_sets = np.vstack(prediction_sets)
 
     return prediction_sets

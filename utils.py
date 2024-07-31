@@ -131,16 +131,17 @@ def detailed_coverage_size(sets, targets):
     cvg = np.mean(sets[range(n_test), targets] == True)
     sz = sets.sum(1).mean()
     # class specific coverage
-    classes, counts = np.unique(targets, return_counts=True)
-    cvgs, szs = np.zeros(classes.shape[0]), np.zeros(classes.shape[0])
-    for i, cls in enumerate(classes):
-        cvgs[i] = np.mean(sets[targets == cls, cls] == True)
-        szs[i] = sets[targets == cls, :].sum(1).mean()
+    classes, _ = np.unique(targets, return_counts=True)
+    num_classes = classes.shape[0]
+    cvgs, szs = np.zeros(num_classes), np.zeros(num_classes)
+    for i in range(num_classes):
+        cvgs[i] = np.mean(sets[targets == i, i] == True)
+        szs[i] = sets[targets == i, :].sum(1).mean()
 
     cls_cvg_min = cvgs.min()
     cls_cvg_max = cvgs.max()
     cls_cvg_median = np.median(cvgs)
-    cls_sz_min = szs.min()
+    cls_sz_min = szs.min
     cls_sz_max = szs.max()
     cls_sz_median = np.median(szs)
 
