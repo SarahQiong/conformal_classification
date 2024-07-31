@@ -491,8 +491,6 @@ def conformal_test(scores,
                    class_specific=False,
                    randomized=None,
                    allow_zero_sets=None):
-    classes = np.unique(targets)
-    num_classes = len(classes)
 
     if not class_specific:
         if method == "optimal":
@@ -515,6 +513,8 @@ def conformal_test(scores,
                                   allow_zero_sets=allow_zero_sets,
                                   onehot=True)
     else:
+        classes = np.unique(targets)
+        num_classes = classes.shape[0]
         prediction_sets = []
         for k in range(num_classes):
             prediction_sets.append(
