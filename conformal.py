@@ -526,7 +526,7 @@ def conformal_test(scores,
                                class_specific=False,
                                randomized=None,
                                allow_zero_sets=None))
-        prediction_sets = np.stack(prediction_sets)
+        prediction_sets = np.vstack(prediction_sets)
 
     return prediction_sets
 
@@ -593,7 +593,7 @@ def conformal_calibration_all(cmodel, calib_loader):
             scores.append(score)
             targets.append(target)
 
-    scores = np.stack(scores)
+    scores = np.vstack(scores)
     targets = np.concatenate(targets)
 
     Qhat['optimal_o'] = compute_overall_qhat(scores,
