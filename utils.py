@@ -128,7 +128,7 @@ def coverage_size(S, targets):
 def evaluate_prediction_sets(sets, targets):
     n_test = targets.shape[0]
     # overall coverage
-    print('n_test')
+    print('n_test', n_test)
     cvg = np.mean(sets[range(n_test), targets] == True)
     sz = sets.sum(1).mean()
     return cvg, sz
