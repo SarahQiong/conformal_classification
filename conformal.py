@@ -574,7 +574,7 @@ def compute_overall_qhat(scores,
         for k in range(num_classes):
             qhat[k] = compute_overall_qhat(scores[targets == k],
                                            targets[targets == k], method,
-                                           penalities[targets == k], alpha)
+                                           penalities, alpha)
     return qhat
 
 
