@@ -492,7 +492,7 @@ def conformal_test(scores,
                    randomized=None,
                    allow_zero_sets=None):
     classes = np.unique(targets)
-    num_classes = classes.shape[0]
+    num_classes = len(classes)
 
     if not class_specific:
         if method == "optimal":
@@ -582,7 +582,7 @@ def compute_overall_qhat(scores,
     return qhat
 
 
-def conformal_calibration(cmodel, calib_loader):
+def conformal_calibration_all(cmodel, calib_loader):
     scores, targets = [], []
     Qhat = {}
     cmodel.eval()
