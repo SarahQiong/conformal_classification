@@ -136,18 +136,20 @@ def detailed_coverage_size(sets, targets):
     cvgs, szs = np.zeros(num_classes), np.zeros(num_classes)
     for i in range(num_classes):
         cvgs[i] = np.mean(sets[targets == i, i] == True)
-        szs[i] = sets[targets == i, :].sum(1).mean()
+        szs[i] = sets[targets == i].sum(1).mean()
+        if i == 0:
+            print(targets == i)
 
-    print(cvgs[:10])
+    print(cvgs[:10], np.mean(cvgs))
 
     cls_cvg_min = cvgs.min()
     cls_cvg_max = cvgs.max()
-    cls_cvg_median = np.median(cvgs)
+    cls_cvg_mean = cvgs.mean()
     cls_sz_min = szs.min()
     cls_sz_max = szs.max()
-    cls_sz_median = np.median(szs)
+    cls_sz_mean = szs.mean()
 
-    return cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median
+    return cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_mean, cls_sz_min, cls_sz_max, cls_sz_mean
 
 
 def accuracy(output, target, topk=(1, )):
