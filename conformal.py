@@ -97,7 +97,7 @@ def conformal_calibration(cmodel, calib_loader):
                                     randomized=True,
                                     allow_zero_sets=True)))
 
-        Qhat = np.quantile(E, 1 - cmodel.alpha, interpolation='higher')
+        Qhat = np.quantile(E, 1 - cmodel.alpha, method='higher')
 
         return Qhat
 
@@ -238,7 +238,7 @@ def conformal_calibration_logits(cmodel, calib_loader):
                                     randomized=True,
                                     allow_zero_sets=True)))
 
-        Qhat = np.quantile(E, 1 - cmodel.alpha, interpolation='higher')
+        Qhat = np.quantile(E, 1 - cmodel.alpha, method='higher')
 
         return Qhat
 
@@ -366,7 +366,7 @@ def pick_kreg(paramtune_logits, alpha):
         np.where(np.argsort(x[0]).flip(dims=(0, )) == x[1])[0][0]
         for x in paramtune_logits
     ])
-    kstar = np.quantile(gt_locs_kstar, 1 - alpha, interpolation='higher') + 1
+    kstar = np.quantile(gt_locs_kstar, 1 - alpha, method='higher') + 1
     return kstar
 
 
@@ -522,7 +522,7 @@ def conformal_test(scores,
                                targets[targets == k],
                                qhat[k],
                                method=method,
-                               penalties=penalties[targets == k],
+                               penalties=penalties,
                                class_specific=False,
                                randomized=None,
                                allow_zero_sets=None))
@@ -565,7 +565,7 @@ def compute_overall_qhat(scores,
                                    randomized=True,
                                    allow_zero_sets=True),
                                1 - alpha,
-                               interpolation='higher')
+                               method='higher')
 
     else:
         classes = np.unique(targets)
@@ -650,7 +650,7 @@ def conformal_prediction(logits, labels, qhat, penalties, randomized=False):
                                 class_specific=True)
     S['raps'] = conformal_test(logits,
                                labels,
-                               qhat["raps"],
+                               qhat["raps_o"],
                                "RAPS",
                                penalties=penalties,
                                class_specific=False,
