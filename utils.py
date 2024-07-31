@@ -142,7 +142,7 @@ def detailed_coverage_size(sets, targets):
     num_classes = classes.shape[0]
     cvgs, szs = np.zeros(num_classes), np.zeros(num_classes)
     for i in range(num_classes):
-        print('i, entering evalute')
+        print(i, 'entering evalute')
         cvgs[i], szs[i] = evaluate_prediction_sets(sets[targets == i],
                                                    targets[targets == i])
     print(cvgs[:10])
