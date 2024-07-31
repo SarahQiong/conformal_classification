@@ -537,11 +537,13 @@ def compute_overall_qhat(scores,
                          penalities,
                          alpha,
                          class_specific=False):
-    n = scores.shape[0]
-    classes = np.unique(targets)
-    num_classes = len(classes)
 
     if not class_specific:
+
+        n = scores.shape[0]
+        classes = np.unique(targets)
+        num_classes = classes.shape[0]
+
         if method == "optimal":
             # optimal uses 1-p(y|x)
             qhat = np.quantile((1 - scores)[range(n), targets],
@@ -557,19 +559,17 @@ def compute_overall_qhat(scores,
                                min(np.ceil((n + 1) * (1 - alpha)) / n, 1),
                                method='higher')
         elif method == "RAPS":
-            E_raps = np.array([])
-            for i, scores in enumerate(scores):
-                I, ordered, cumsum = sort_sum(scores)
-                E_aps = np.concatenate((E_raps,
-                                        giq(scores,
-                                            targets[i],
-                                            I=I,
-                                            ordered=ordered,
-                                            cumsum=cumsum,
-                                            penalties=penalities,
-                                            randomized=True,
-                                            allow_zero_sets=True)))
-            qhat = np.quantile(E_aps, 1 - alpha, interpolation='higher')
+            I, ordered, cumsum = sort_sum(scores)
+            qhat = np.quantile(giq(scores,
+                                   targets,
+                                   I=I,
+                                   ordered=ordered,
+                                   cumsum=cumsum,
+                                   penalties=penalities,
+                                   randomized=True,
+                                   allow_zero_sets=True),
+                               1 - alpha,
+                               interpolation='higher')
 
     else:
         qhat = np.zeros(num_classes)
@@ -592,6 +592,9 @@ def conformal_calibration_all(cmodel, calib_loader):
             score = softmax(logit / cmodel.T.item(), axis=1)
             scores.append(score)
             targets.append(target)
+
+    scores = np.stack(scores)
+    targets = np.concatenate(targets)
 
     Qhat['optimal_o'] = compute_overall_qhat(scores,
                                              targets,
