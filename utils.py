@@ -137,6 +137,9 @@ def detailed_coverage_size(sets, targets):
     for i in range(num_classes):
         cvgs[i] = np.sum(sets[targets == i, i] == True) / counts[i]
         szs[i] = np.sum(sets[targets == i].sum(1)) / counts[i]
+        if i == 0:
+            print(i, counts[i])
+    print(cvgs[:10])
 
     cls_cvg_min = cvgs.min()
     cls_cvg_max = cvgs.max()
