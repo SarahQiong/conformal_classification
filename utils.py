@@ -94,33 +94,33 @@ def coverage_size(S, targets):
     return float(covered) / targets.shape[0], size / targets.shape[0]
 
 
-def all_validate(val_loader, model):
-    with torch.no_grad():
-        # switch to evaluate mode
-        model.eval()
-        logits = []
-        targets = []
-        with torch.no_grad():
-            for logit, target in val_loader:
-                logit = logit.detach().cpu().numpy()
-                score = softmax(logit / model.T.item(), axis=1)
-                logits.append(score)
-                targets.append(target)
+def all_validate(logits, targets, model):
+    # with torch.no_grad():
+    #     # switch to evaluate mode
+    #     model.eval()
+    #     logits = []
+    #     targets = []
+    #     with torch.no_grad():
+    #         for logit, target in val_loader:
+    #             logit = logit.detach().cpu().numpy()
+    #             score = softmax(logit / model.T.item(), axis=1)
+    #             logits.append(score)
+    #             targets.append(target)
 
-        logits = np.vstack(logits)
-        targets = np.concatenate(targets)
+    #     logits = np.vstack(logits)
+    #     targets = np.concatenate(targets)
 
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(logits, targets, topk=(1, 5))
-        S = model(logits)
+    # measure accuracy and record loss
+    prec1, prec5 = accuracy(logits, targets, topk=(1, 5))
+    S = model(logits)
 
-        for method in ['optimal_o', 'optimal_c', 'aps_o', 'aps_c', 'raps']:
-            cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median = detailed_coverage_size(
-                S['method'], target)
-            print(
-                "Method %s | Top 1 %.3f | Top 5 %.3f | Cvg %.4f | Sz %.4f | Cls_cvg_min %.4f | Cls_cvg_max %.4f | Cls_cvg_med %.4f | Cls_sz_min %.4f| Cls_sz_max %.4f|Cls_sz_med %.4f"
-                .format(method, cvg, sz, cls_cvg_min, cls_cvg_max,
-                        cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median))
+    for method in ['optimal_o', 'optimal_c', 'aps_o', 'aps_c', 'raps']:
+        cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median = detailed_coverage_size(
+            S['method'], targets)
+        print(
+            "Method %s | Top 1 %.3f | Top 5 %.3f | Cvg %.4f | Sz %.4f | Cls_cvg_min %.4f | Cls_cvg_max %.4f | Cls_cvg_med %.4f | Cls_sz_min %.4f| Cls_sz_max %.4f|Cls_sz_med %.4f"
+            .format(method, cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median,
+                    cls_sz_min, cls_sz_max, cls_sz_median))
 
     return prec1, prec5, cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median
 
