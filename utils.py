@@ -138,6 +138,8 @@ def detailed_coverage_size(sets, targets):
         cvgs[i] = np.mean(sets[targets == i, i] == True)
         szs[i] = sets[targets == i, :].sum(1).mean()
 
+    print(cvgs[:10])
+
     cls_cvg_min = cvgs.min()
     cls_cvg_max = cvgs.max()
     cls_cvg_median = np.median(cvgs)
