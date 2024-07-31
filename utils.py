@@ -128,7 +128,7 @@ def coverage_size(S, targets):
 def evaluate_prediction_sets(sets, targets):
     n_test = targets.shape[0]
     # overall coverage
-    print('n_test', n_test)
+    # print('n_test', n_test)
     cvg = np.mean(sets[range(n_test), targets] == True)
     sz = sets.sum(1).mean()
     return cvg, sz
@@ -138,14 +138,14 @@ def detailed_coverage_size(sets, targets):
     cvg, sz = evaluate_prediction_sets(sets, targets)
 
     # class specific coverage
-    classes, _ = np.unique(targets, return_counts=True)
+    classes = np.unique(targets)
     num_classes = classes.shape[0]
     cvgs, szs = np.zeros(num_classes), np.zeros(num_classes)
     for i in range(num_classes):
-        print(i, 'entering evalute')
+        # print(i, 'entering evalute')
         cvgs[i], szs[i] = evaluate_prediction_sets(sets[targets == i],
                                                    targets[targets == i])
-    print(cvgs[:10])
+    print(cvgs[:10], szs[:10])
 
     cls_cvg_min = cvgs.min()
     cls_cvg_max = cvgs.max()
