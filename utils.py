@@ -141,7 +141,7 @@ def detailed_coverage_size(sets, targets):
     cls_cvg_min = cvgs.min()
     cls_cvg_max = cvgs.max()
     cls_cvg_median = np.median(cvgs)
-    cls_sz_min = szs.min
+    cls_sz_min = szs.min()
     cls_sz_max = szs.max()
     cls_sz_median = np.median(szs)
 
