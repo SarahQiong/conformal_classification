@@ -539,11 +539,7 @@ def compute_overall_qhat(scores,
                          class_specific=False):
 
     if not class_specific:
-
         n = scores.shape[0]
-        classes = np.unique(targets)
-        num_classes = classes.shape[0]
-
         if method == "optimal":
             # optimal uses 1-p(y|x)
             qhat = np.quantile((1 - scores)[range(n), targets],
@@ -572,6 +568,8 @@ def compute_overall_qhat(scores,
                                interpolation='higher')
 
     else:
+        classes = np.unique(targets)
+        num_classes = classes.shape[0]
         qhat = np.zeros(num_classes)
         for k in range(num_classes):
             qhat[k] = compute_overall_qhat(scores[targets == k],
