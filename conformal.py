@@ -124,242 +124,130 @@ def platt(cmodel, calib_loader, max_iters=10, lr=0.01, epsilon=0.01):
 
 
 """
-INTERNAL FUNCTIONS
+
+
+        INTERNAL FUNCTIONS
+
+
 """
 
 ### Precomputed-logit versions of the above functions.
 
 
 class ConformalModelLogits(nn.Module):
-    """
-    In the forward pass, we are going to compute the threshold for the following 5 method
-    - optimal + o
-    - optimal + c
-    - APS + o
-    - APS + c
-    - RAPS
-    """
 
-    def __init__(
-            self,
-            model,
-            calib_loader,
-            alpha,
-            #  kreg=None,
-            #  lamda=None,
-            randomized=True,
-            allow_zero_sets=False,
-            pct_paramtune=0.3,
-            batch_size=32,
-            lamda_criterion='size'):
+    def __init__(self,
+                 model,
+                 calib_loader,
+                 alpha,
+                 kreg=None,
+                 lamda=None,
+                 randomized=True,
+                 allow_zero_sets=False,
+                 naive=False,
+                 LAC=False,
+                 pct_paramtune=0.3,
+                 batch_size=32,
+                 lamda_criterion='size'):
         super(ConformalModelLogits, self).__init__()
         self.model = model
         self.alpha = alpha
         self.randomized = randomized
+        self.LAC = LAC
         self.allow_zero_sets = allow_zero_sets
         self.T = platt_logits(self, calib_loader)
 
-        # pick the hyper-parameter for RAPS method
-        kreg, lamda, calib_logits = pick_parameters(
-            model, calib_loader.dataset, alpha, None, None, randomized,
-            allow_zero_sets, pct_paramtune, batch_size, lamda_criterion)
-        calib_loader = tdata.DataLoader(calib_logits,
-                                        batch_size=batch_size,
-                                        shuffle=False,
-                                        pin_memory=True)
-        # the penalty function for the RAPS function
-        self.penalties = np.zeros((1, calib_loader.dataset[0][0].shape[0]))
-        self.penalties[:, kreg:] += lamda
-        # self.Qhat is a dictionary which contains the calibration score for all 5 methods
-        self.Qhat = conformal_calibration_logits(self, calib_loader)
+        if (kreg == None or lamda == None) and not naive and not LAC:
+            kreg, lamda, calib_logits = pick_parameters(
+                model, calib_loader.dataset, alpha, kreg, lamda, randomized,
+                allow_zero_sets, pct_paramtune, batch_size, lamda_criterion)
+            calib_loader = tdata.DataLoader(calib_logits,
+                                            batch_size=batch_size,
+                                            shuffle=False,
+                                            pin_memory=True)
 
-    def forward(self, logits, labels, randomized=None, allow_zero_sets=None):
+        self.penalties = np.zeros((1, calib_loader.dataset[0][0].shape[0]))
+        if not (kreg == None) and not naive and not LAC:
+            self.penalties[:, kreg:] += lamda
+        self.Qhat = 1 - alpha
+        if not naive and not LAC:
+            self.Qhat = conformal_calibration_logits(self, calib_loader)
+        elif not naive and LAC:
+            gt_locs_cal = np.array([
+                np.where(np.argsort(x[0]).flip(dims=(0, )) == x[1])[0][0]
+                for x in calib_loader.dataset
+            ])
+            scores_cal = 1 - np.array([
+                np.sort(
+                    torch.softmax(calib_loader.dataset[i][0] / self.T.item(),
+                                  dim=0))[::-1][gt_locs_cal[i]]
+                for i in range(len(calib_loader.dataset))
+            ])
+            self.Qhat = np.quantile(
+                scores_cal,
+                np.ceil((scores_cal.shape[0] + 1) * (1 - alpha)) /
+                scores_cal.shape[0])
+
+    def forward(self, logits, randomized=None, allow_zero_sets=None):
         if randomized == None:
             randomized = self.randomized
         if allow_zero_sets == None:
             allow_zero_sets = self.allow_zero_sets
 
-        # _, counts = np.unique(labels, return_counts=True)
+        with torch.no_grad():
+            logits_numpy = logits.detach().cpu().numpy()
+            scores = softmax(logits_numpy / self.T.item(), axis=1)
 
-        S = {}
-        S['optimal_o'] = conformal_test(1 - logits,
-                                        labels,
-                                        self.Qhat["optimal_o"],
-                                        "optimal",
-                                        class_specific=False)
-        S['optimal_c'] = conformal_test(1 - logits,
-                                        labels,
-                                        self.Qhat["optimal_c"],
-                                        "optimal",
-                                        class_specific=True)
-        S['aps_o'] = conformal_test(logits,
-                                    labels,
-                                    self.Qhat["aps_o"],
-                                    "APS",
-                                    class_specific=False)
-        S['aps_c'] = conformal_test(1 - logits,
-                                    labels,
-                                    self.Qhat["aps_c"],
-                                    "APS",
-                                    class_specific=True)
-        S['raps'] = conformal_test(1 - logits,
-                                   labels,
-                                   self.Qhat["raps"],
-                                   "RAPS",
-                                   penalties=self.penalties,
-                                   class_specific=False,
-                                   randomized=randomized,
-                                   allow_zero_sets=allow_zero_sets)
-
-        return S
-
-
-def conformal_test(scores,
-                   targets,
-                   qhat,
-                   method,
-                   penalties=0,
-                   class_specific=False,
-                   randomized=None,
-                   allow_zero_sets=None):
-    classes = np.unique(targets)
-    num_classes = classes.shape[0]
-
-    if not class_specific:
-        if method == "optimal":
-            prediction_sets = (scores <= qhat)
-        elif method == "APS":
-            val_pi = scores.argsort(1)[:, ::-1]
-            val_srt = np.take_along_axis(scores, val_pi, axis=1).cumsum(axis=1)
-            prediction_sets = np.take_along_axis(val_srt <= qhat,
-                                                 val_pi.argsort(axis=1),
-                                                 axis=1)
-        elif method == "RAPS":
-            I, ordered, cumsum = sort_sum(scores)
-            prediction_sets = gcq(scores,
-                                  qhat,
-                                  I=I,
-                                  ordered=ordered,
-                                  cumsum=cumsum,
-                                  penalties=penalties,
-                                  randomized=randomized,
-                                  allow_zero_sets=allow_zero_sets)
-    else:
-        prediction_sets = []
-        for k in range(num_classes):
-            prediction_sets.append(
-                conformal_test(scores[targets == k],
-                               targets[targets == k],
-                               qhat[k],
-                               method=method,
-                               penalties=penalties,
-                               class_specific=False,
-                               randomized=None,
-                               allow_zero_sets=None))
-        prediction_sets = np.stack(prediction_sets)
-
-    return prediction_sets
-
-
-def compute_overall_qhat(scores,
-                         targets,
-                         method,
-                         penalities,
-                         alpha,
-                         class_specific=False):
-    n = scores.shape[0]
-    classes = np.unique(targets)
-    num_classes = classes.shape[0]
-
-    if not class_specific:
-        if method == "optimal":
-            # optimal uses 1-p(y|x)
-            qhat = np.quantile((1 - scores)[range(n), targets],
-                               min(np.ceil((n + 1) * (1 - alpha)) / n, 1),
-                               method='higher')
-        elif method == "APS":
-            cal_pi = scores.argsort(1)[:, ::-1]
-            cal_srt = np.take_along_axis(scores, cal_pi, axis=1).cumsum(axis=1)
-            cal_scores = np.take_along_axis(cal_srt,
-                                            cal_pi.argsort(axis=1),
-                                            axis=1)[range(n), targets]
-            qhat = np.quantile(cal_scores,
-                               min(np.ceil((n + 1) * (1 - alpha)) / n, 1),
-                               method='higher')
-        elif method == "RAPS":
-            E_raps = np.array([])
-            for i, scores in enumerate(scores):
+            if not self.LAC:
                 I, ordered, cumsum = sort_sum(scores)
-                E_aps = np.concatenate((E_raps,
-                                        giq(scores,
-                                            targets[i],
-                                            I=I,
-                                            ordered=ordered,
-                                            cumsum=cumsum,
-                                            penalties=penalities,
-                                            randomized=True,
-                                            allow_zero_sets=True)))
-            qhat = np.quantile(E_aps, 1 - alpha, interpolation='higher')
 
-    else:
-        qhat = np.zeros(num_classes)
-        for k in range(num_classes):
-            qhat[k] = compute_overall_qhat(scores[targets == k],
-                                           targets[targets == k],
-                                           alpha,
-                                           method=method,
-                                           class_specific=False)
-    return qhat
+                S = gcq(scores,
+                        self.Qhat,
+                        I=I,
+                        ordered=ordered,
+                        cumsum=cumsum,
+                        penalties=self.penalties,
+                        randomized=randomized,
+                        allow_zero_sets=allow_zero_sets)
+            else:
+                S = [
+                    np.where((1 - scores[i, :]) < self.Qhat)[0]
+                    for i in range(scores.shape[0])
+                ]
+
+        return logits, S
 
 
 def conformal_calibration_logits(cmodel, calib_loader):
-    scores, targets = [], []
-    Qhat = {}
-    cmodel.eval()
     with torch.no_grad():
-        for logit, target in calib_loader:
-            logit = logit.detach().cpu().numpy()
-            score = softmax(logit / cmodel.T.item(), axis=1)
-            scores.append(score)
-            targets.append(target)
+        E = np.array([])
+        for logits, targets in calib_loader:
+            logits = logits.detach().cpu().numpy()
 
-    Qhat['optimal_o'] = compute_overall_qhat(scores,
-                                             targets,
-                                             "optimal",
-                                             0,
-                                             cmodel.alpha,
-                                             class_specific=False)
-    Qhat['optimal_c'] = compute_overall_qhat(scores,
-                                             targets,
-                                             "optimal",
-                                             0,
-                                             cmodel.alpha,
-                                             class_specific=True)
-    Qhat['aps_o'] = compute_overall_qhat(scores,
-                                         targets,
-                                         "APS",
-                                         0,
-                                         cmodel.alpha,
-                                         class_specific=False)
-    Qhat['aps_c'] = compute_overall_qhat(scores,
-                                         targets,
-                                         "APS",
-                                         0,
-                                         cmodel.alpha,
-                                         class_specific=True)
-    Qhat['raps_o'] = compute_overall_qhat(scores,
-                                          targets,
-                                          "RAPS",
-                                          cmodel.penalties,
-                                          cmodel.alpha,
-                                          class_specific=False)
+            scores = softmax(logits / cmodel.T.item(), axis=1)
 
-    return Qhat
+            I, ordered, cumsum = sort_sum(scores)
+
+            E = np.concatenate((E,
+                                giq(scores,
+                                    targets,
+                                    I=I,
+                                    ordered=ordered,
+                                    cumsum=cumsum,
+                                    penalties=cmodel.penalties,
+                                    randomized=True,
+                                    allow_zero_sets=True)))
+
+        Qhat = np.quantile(E, 1 - cmodel.alpha, interpolation='higher')
+
+        return Qhat
 
 
 def platt_logits(cmodel, calib_loader, max_iters=10, lr=0.01, epsilon=0.01):
     nll_criterion = nn.CrossEntropyLoss().cuda()
+
     T = nn.Parameter(torch.Tensor([1.3]).cuda())
+
     optimizer = optim.SGD([T], lr=lr)
     for iter in range(max_iters):
         T_old = T.item()
@@ -380,8 +268,15 @@ def platt_logits(cmodel, calib_loader, max_iters=10, lr=0.01, epsilon=0.01):
 
 
 # Generalized conditional quantile function.
-def gcq(scores, tau, I, ordered, cumsum, penalties, randomized,
-        allow_zero_sets):
+def gcq(scores,
+        tau,
+        I,
+        ordered,
+        cumsum,
+        penalties,
+        randomized,
+        allow_zero_sets,
+        onehot=False):
     penalties_cumsum = np.cumsum(penalties, axis=1)
     sizes_base = (
         (cumsum + penalties_cumsum) <= tau).sum(axis=1) + 1  # 1 - 1001
@@ -406,17 +301,19 @@ def gcq(scores, tau, I, ordered, cumsum, penalties, randomized,
             sizes ==
             0] = 1  # allow the user the option to never have empty sets (will lead to incorrect coverage if 1-alpha < model's top-1 accuracy
 
-    S = np.zeros_like(scores)
-    for i in range(scores.shape[0]):
-        S[i, I[i, 0:sizes[i]]] = 1
+    if onehot:
+        S = np.zeros_like(scores)
+        for i in range(scores.shape[0]):
+            S[i, I[i, 0:sizes[i]]] = 1
 
-    # S = list()
+    else:
+        S = list()
 
-    # # Construct S from equation (5)
-    # for i in range(I.shape[0]):
-    #     S = S + [
-    #         I[i, 0:sizes[i]],
-    #     ]
+        # Construct S from equation (5)
+        for i in range(I.shape[0]):
+            S = S + [
+                I[i, 0:sizes[i]],
+            ]
 
     return S
 
@@ -579,3 +476,185 @@ def get_violation(cmodel, loader_paramtune, strata, alpha):
         stratum_violation = abs(temp_df.correct.mean() - (1 - alpha))
         wc_violation = max(wc_violation, stratum_violation)
     return wc_violation  # the violation
+
+
+"""
+Functions added by Qiong
+"""
+
+
+def conformal_test(scores,
+                   targets,
+                   qhat,
+                   method,
+                   penalties=0,
+                   class_specific=False,
+                   randomized=None,
+                   allow_zero_sets=None):
+    classes = np.unique(targets)
+    num_classes = classes.shape[0]
+
+    if not class_specific:
+        if method == "optimal":
+            prediction_sets = (scores <= qhat)
+        elif method == "APS":
+            val_pi = scores.argsort(1)[:, ::-1]
+            val_srt = np.take_along_axis(scores, val_pi, axis=1).cumsum(axis=1)
+            prediction_sets = np.take_along_axis(val_srt <= qhat,
+                                                 val_pi.argsort(axis=1),
+                                                 axis=1)
+        elif method == "RAPS":
+            I, ordered, cumsum = sort_sum(scores)
+            prediction_sets = gcq(scores,
+                                  qhat,
+                                  I=I,
+                                  ordered=ordered,
+                                  cumsum=cumsum,
+                                  penalties=penalties,
+                                  randomized=randomized,
+                                  allow_zero_sets=allow_zero_sets,
+                                  onehot=True)
+    else:
+        prediction_sets = []
+        for k in range(num_classes):
+            prediction_sets.append(
+                conformal_test(scores[targets == k],
+                               targets[targets == k],
+                               qhat[k],
+                               method=method,
+                               penalties=penalties,
+                               class_specific=False,
+                               randomized=None,
+                               allow_zero_sets=None))
+        prediction_sets = np.stack(prediction_sets)
+
+    return prediction_sets
+
+
+def compute_overall_qhat(scores,
+                         targets,
+                         method,
+                         penalities,
+                         alpha,
+                         class_specific=False):
+    n = scores.shape[0]
+    classes = np.unique(targets)
+    num_classes = classes.shape[0]
+
+    if not class_specific:
+        if method == "optimal":
+            # optimal uses 1-p(y|x)
+            qhat = np.quantile((1 - scores)[range(n), targets],
+                               min(np.ceil((n + 1) * (1 - alpha)) / n, 1),
+                               method='higher')
+        elif method == "APS":
+            cal_pi = scores.argsort(1)[:, ::-1]
+            cal_srt = np.take_along_axis(scores, cal_pi, axis=1).cumsum(axis=1)
+            cal_scores = np.take_along_axis(cal_srt,
+                                            cal_pi.argsort(axis=1),
+                                            axis=1)[range(n), targets]
+            qhat = np.quantile(cal_scores,
+                               min(np.ceil((n + 1) * (1 - alpha)) / n, 1),
+                               method='higher')
+        elif method == "RAPS":
+            E_raps = np.array([])
+            for i, scores in enumerate(scores):
+                I, ordered, cumsum = sort_sum(scores)
+                E_aps = np.concatenate((E_raps,
+                                        giq(scores,
+                                            targets[i],
+                                            I=I,
+                                            ordered=ordered,
+                                            cumsum=cumsum,
+                                            penalties=penalities,
+                                            randomized=True,
+                                            allow_zero_sets=True)))
+            qhat = np.quantile(E_aps, 1 - alpha, interpolation='higher')
+
+    else:
+        qhat = np.zeros(num_classes)
+        for k in range(num_classes):
+            qhat[k] = compute_overall_qhat(scores[targets == k],
+                                           targets[targets == k],
+                                           alpha,
+                                           method=method,
+                                           class_specific=False)
+    return qhat
+
+
+def conformal_calibration(cmodel, calib_loader):
+    scores, targets = [], []
+    Qhat = {}
+    cmodel.eval()
+    with torch.no_grad():
+        for logit, target in calib_loader:
+            logit = logit.detach().cpu().numpy()
+            score = softmax(logit / cmodel.T.item(), axis=1)
+            scores.append(score)
+            targets.append(target)
+
+    Qhat['optimal_o'] = compute_overall_qhat(scores,
+                                             targets,
+                                             "optimal",
+                                             0,
+                                             cmodel.alpha,
+                                             class_specific=False)
+    Qhat['optimal_c'] = compute_overall_qhat(scores,
+                                             targets,
+                                             "optimal",
+                                             0,
+                                             cmodel.alpha,
+                                             class_specific=True)
+    Qhat['aps_o'] = compute_overall_qhat(scores,
+                                         targets,
+                                         "APS",
+                                         0,
+                                         cmodel.alpha,
+                                         class_specific=False)
+    Qhat['aps_c'] = compute_overall_qhat(scores,
+                                         targets,
+                                         "APS",
+                                         0,
+                                         cmodel.alpha,
+                                         class_specific=True)
+    Qhat['raps_o'] = compute_overall_qhat(scores,
+                                          targets,
+                                          "RAPS",
+                                          cmodel.penalties,
+                                          cmodel.alpha,
+                                          class_specific=False)
+
+    return Qhat
+
+
+def conformal_prediction(logits, labels, qhat, penalties, randomized=False):
+    S = {}
+    S['optimal_o'] = conformal_test(1 - logits,
+                                    labels,
+                                    qhat["optimal_o"],
+                                    "optimal",
+                                    class_specific=False)
+    S['optimal_c'] = conformal_test(1 - logits,
+                                    labels,
+                                    qhat["optimal_c"],
+                                    "optimal",
+                                    class_specific=True)
+    S['aps_o'] = conformal_test(logits,
+                                labels,
+                                qhat["aps_o"],
+                                "APS",
+                                class_specific=False)
+    S['aps_c'] = conformal_test(logits,
+                                labels,
+                                qhat["aps_c"],
+                                "APS",
+                                class_specific=True)
+    S['raps'] = conformal_test(logits,
+                               labels,
+                               qhat["raps"],
+                               "RAPS",
+                               penalties=penalties,
+                               class_specific=False,
+                               randomized=randomized,
+                               allow_zero_sets=True)
+    return S

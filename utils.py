@@ -45,7 +45,56 @@ class AverageMeter(object):
         return fmtstr.format(**self.__dict__)
 
 
-def validate(val_loader, model):
+def validate(val_loader, model, print_bool):
+    with torch.no_grad():
+        batch_time = AverageMeter('batch_time')
+        top1 = AverageMeter('top1')
+        top5 = AverageMeter('top5')
+        coverage = AverageMeter('RAPS coverage')
+        size = AverageMeter('RAPS size')
+        # switch to evaluate mode
+        model.eval()
+        end = time.time()
+        N = 0
+        for i, (x, target) in enumerate(val_loader):
+            target = target.cuda()
+            # compute output
+            output, S = model(x.cuda())
+            # measure accuracy and record loss
+            prec1, prec5 = accuracy(output, target, topk=(1, 5))
+            cvg, sz = coverage_size(S, target)
+
+            # Update meters
+            top1.update(prec1.item() / 100.0, n=x.shape[0])
+            top5.update(prec5.item() / 100.0, n=x.shape[0])
+            coverage.update(cvg, n=x.shape[0])
+            size.update(sz, n=x.shape[0])
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+            N = N + x.shape[0]
+            if print_bool:
+                print(
+                    f'\rN: {N} | Time: {batch_time.val:.3f} ({batch_time.avg:.3f}) | Cvg@1: {top1.val:.3f} ({top1.avg:.3f}) | Cvg@5: {top5.val:.3f} ({top5.avg:.3f}) | Cvg@RAPS: {coverage.val:.3f} ({coverage.avg:.3f}) | Size@RAPS: {size.val:.3f} ({size.avg:.3f})',
+                    end='')
+    if print_bool:
+        print('')  #Endline
+
+    return top1.avg, top5.avg, coverage.avg, size.avg
+
+
+def coverage_size(S, targets):
+    covered = 0
+    size = 0
+    for i in range(targets.shape[0]):
+        if (targets[i].item() in S[i]):
+            covered += 1
+        size = size + S[i].shape[0]
+    return float(covered) / targets.shape[0], size / targets.shape[0]
+
+
+def all_validate(val_loader, model):
     with torch.no_grad():
         # switch to evaluate mode
         model.eval()
@@ -66,7 +115,7 @@ def validate(val_loader, model):
         S = model(logits)
 
         for method in ['optimal_o', 'optimal_c', 'aps_o', 'aps_c', 'raps']:
-            cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median = coverage_size(
+            cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median = detailed_coverage_size(
                 S['method'], target)
             print(
                 "Method %s | Top 1 %.3f | Top 5 %.3f | Cvg %.4f | Sz %.4f | Cls_cvg_min %.4f | Cls_cvg_max %.4f | Cls_cvg_med %.4f | Cls_sz_min %.4f| Cls_sz_max %.4f|Cls_sz_med %.4f"
@@ -76,7 +125,7 @@ def validate(val_loader, model):
     return prec1, prec5, cvg, sz, cls_cvg_min, cls_cvg_max, cls_cvg_median, cls_sz_min, cls_sz_max, cls_sz_median
 
 
-def coverage_size(sets, targets):
+def detailed_coverage_size(sets, targets):
     n_test = targets.shape[0]
     # overall coverage
     cvg = np.mean(sets[range(n_test), targets] == True)
